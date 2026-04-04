@@ -225,9 +225,9 @@ const Dashboard = () => {
             {activeModal === 'upgrade' ? (
               <div className="space-y-5">
                 <div className="bg-linear-to-br from-blue-700 to-indigo-900 p-8 rounded-4xl text-white shadow-xl text-center border border-white/20">
-                  <p className="text-[10px] font-black opacity-60 mb-2 uppercase tracking-widest italic">Bank: MEEZAN BANK</p>
+                  <p className="text-[10px] font-black opacity-60 mb-2 uppercase tracking-widest italic">Bank Name: MEEZAN BANK</p>
                   <p className="text-2xl font-black tracking-widest mb-4 italic">00300109721101</p>
-                  <p className="text-xs font-black uppercase opacity-90 italic">Usama Ali / Ayesha Usama</p>
+                  <p className="text-xs font-black uppercase opacity-90 italic">Ayesha Usama</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {plans.map(p => (
