@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth'; // sendEmailVerification remove kiya
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 
@@ -30,8 +30,7 @@ const Signup = () => {
       const user = res.user;
       console.log("Auth Account Created:", user.uid);
 
-      // 2. Firestore Database mein User ka Data Save karein (Pehle Database phir Email)
-      // Taake agar email fail bhi ho, to data Firestore mein mil jaye
+      // 2. Firestore Database mein User ka Data Save karein
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         name: formData.name,
@@ -48,12 +47,9 @@ const Signup = () => {
       });
       console.log("Firestore Document Created Successfully!");
 
-      // 3. Verification Email Bhejein
-      await sendEmailVerification(user);
-      console.log("Verification Email Sent!");
-
-      alert("Signup Successful! Check your email (" + formData.email + ") and verify your account before logging in.");
-      navigate('/login');
+      // 3. Seedha Dashboard par bhejein (No verification needed)
+      alert("Signup Successful! Welcome to FintechCash.");
+      navigate('/dashboard');
 
     } catch (err) {
       console.error("Signup Error Details:", err.code, err.message);
@@ -65,8 +61,8 @@ const Signup = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-      <form onSubmit={handleSignup} className="bg-white p-10 rounded-4xl shadow-xl w-full max-w-md border border-slate-100">
-        <h1 className="text-3xl font-black text-blue-700 mb-6 uppercase italic tracking-tighter">FintechCash Signup</h1>
+      <form onSubmit={handleSignup} className="bg-white p-6 md:p-10 rounded-4xl shadow-xl w-full max-w-md border border-slate-100">
+        <h1 className="text-2xl md:text-3xl font-black text-blue-700 mb-6 uppercase italic tracking-tighter">FintechCash Signup</h1>
         
         <div className="space-y-4">
           {/* Referral Info Box */}
@@ -109,7 +105,7 @@ const Signup = () => {
           disabled={loading} 
           className={`w-full bg-blue-700 text-white p-5 rounded-3xl font-black uppercase shadow-xl mt-8 italic tracking-tighter shadow-blue-100 transition-all ${loading ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
         >
-          {loading ? "Processing..." : "Create Account & Verify"}
+          {loading ? "Processing..." : "Create Account & Login"}
         </button>
 
         <p 
