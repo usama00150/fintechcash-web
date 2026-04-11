@@ -33,7 +33,12 @@ const Dashboard = () => {
           const snap = await getDoc(doc(db, "users", user.uid));
           if (snap.exists()) {
             setUserData(snap.data());
-            const qTeam = query(collection(db, "users"), where("referredBy", "==", user.uid));
+          
+  const qTeam = query(
+  collection(db, "users"), 
+  where("referredBy", "==", user.uid),
+  where("status", "==", "active") 
+);
             const tSnap = await getDocs(qTeam);
             setMyTeam(tSnap.docs.map(d => ({ name: d.data().name, plan: d.data().plan })));
           }
