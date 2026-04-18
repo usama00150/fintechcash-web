@@ -43,6 +43,13 @@ const Privacy = () => {
         <p>FintechCash employs industry-standard encryption and security protocols to ensure your data is protected from unauthorized access, disclosure, or alteration.</p>
       </section>
 
+      {/* NEW SECTION ADDED FOR THEOREMREACH COMPLIANCE */}
+      <section className="mb-8">
+        <h2 className="text-2xl font-bold mb-3 text-blue-700 underline">6. Contact & Support</h2>
+        <p>If you have any questions about this Privacy Policy, your data, or the rewards system, please feel free to reach out to us at our official support email:</p>
+        <p className="mt-4 text-xl font-black text-blue-600">usama1500usama@gmail.com</p>
+      </section>
+
       <p className="text-xs text-gray-500 mt-10 italic">Last Updated: April 2026</p>
     </div>
   );
