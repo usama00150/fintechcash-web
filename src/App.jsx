@@ -1,11 +1,13 @@
+// App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Signup from './Signup';
 import Login from './Login';
+import ForgotPassword from './ForgotPassword'; // Naya Page import kiya
 import Dashboard from './Dashboard';
 import Admin from './Admin';
-import Privacy from './Privacy'; // Naya Page
-import Terms from './Terms';     // Naya Page
+import Privacy from './Privacy';
+import Terms from './Terms';
 
 function App() {
   return (
@@ -14,6 +16,7 @@ function App() {
         {/* Authentication & Dashboard */}
         <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} /> {/* Password Reset ka Route */}
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/" element={<Signup />} />
