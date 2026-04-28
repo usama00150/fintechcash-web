@@ -1,3 +1,4 @@
+// admin.jsx 
 import React, { useEffect, useState } from 'react';
 import { db } from './firebase';
 import { collection, query, where, getDocs, doc, updateDoc, getDoc, increment, onSnapshot } from 'firebase/firestore';
@@ -9,7 +10,6 @@ const Admin = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Real-time listener taake refresh na karna pare
     const qUser = query(collection(db, "users"), where("status", "==", "pending_approval"));
     const unsubUsers = onSnapshot(qUser, (snap) => {
       setPendingUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -26,12 +26,12 @@ const Admin = () => {
 
   const handleApproveUser = async (user) => {
     try {
-      // Commission Logic
-      let rate = 0.25; 
-      if (user.planPrice === 700) rate = 0.15;
-      if (user.planPrice === 1200) rate = 0.20;
-
-      const commission = Number(user.planPrice) * rate;
+      // --- FIXED COMMISSION LOGIC ---
+      let rate = 0.15; // Default 15% commission
+      
+      const pkrCommission = Number(user.planPrice) * rate;
+      // Convert PKR to Coins (10 Coins = Rs. 1)
+      const coinCommission = pkrCommission * 10; 
 
       // 1. User status active karein
       await updateDoc(doc(db, "users", user.id), { status: "active" });
@@ -43,36 +43,28 @@ const Admin = () => {
         
         if(referrerSnap.exists()) {
           await updateDoc(referrerRef, {
-            walletBalance: increment(commission),
+            walletBalance: increment(coinCommission),
             referralCount: increment(1)
           });
         }
       }
-      alert(`User ${user.name} Activated! Commission of Rs. ${commission} sent.`);
+      alert(`User ${user.name} Activated! Commission of ${coinCommission} Coins (Rs. ${pkrCommission}) sent to referrer.`);
     } catch (e) { alert("Approval Failed: " + e.message); }
   };
 
   const handleApproveWithdraw = async (w) => {
     try {
+      // Note: Dashboard.jsx ne coins pehle hi minus kar diye hain request bhejte waqt
+      // Isliye yahan hum sirf request status complete karenge.
+      await updateDoc(doc(db, "withdraw_requests", w.id), { status: "completed" });
+      
+      // Agar aap totalWithdraw track karna chahte hain:
       const userRef = doc(db, "users", w.uid);
-      const userSnap = await getDoc(userRef);
+      await updateDoc(userRef, {
+        totalWithdraw: increment(Number(w.coinAmount))
+      });
 
-      if (userSnap.exists()) {
-        const currentBal = userSnap.data().walletBalance || 0;
-        const totalW = userSnap.data().totalWithdraw || 0;
-
-        if (currentBal < w.requestedAmount) return alert("User balance is too low now!");
-
-        // Balance cut karein aur Total Withdraw mein add karein
-        await updateDoc(userRef, {
-          walletBalance: increment(-Number(w.requestedAmount)),
-          totalWithdraw: increment(Number(w.requestedAmount))
-        });
-
-        // Request status update karein
-        await updateDoc(doc(db, "withdraw_requests", w.id), { status: "completed" });
-        alert("Withdrawal marked as Paid!");
-      }
+      alert("Withdrawal marked as Paid!");
     } catch (e) { alert(e.message); }
   };
 
