@@ -68,7 +68,7 @@ const Dashboard = () => {
     e.preventDefault();
     const coinAmount = Number(withdrawData.amount);
 
-    // 10 Coins = Rs. 1 logic => Rs. 500 = 5000 Coins
+    // NEW LOGIC: 10 Coins = Rs. 1 => Rs. 500 = 5000 Coins
     if (coinAmount < 5000) return alert("Minimum withdrawal limit is Rs. 500 (5,000 Coins).");
     if (coinAmount > userData.walletBalance) return alert("Insufficient balance in your wallet.");
     if (!withdrawData.method) return alert("Please select a payment method.");
@@ -92,7 +92,7 @@ const Dashboard = () => {
         createdAt: serverTimestamp() 
       });
 
-      // 2. Deduct Coins from Wallet immediately
+      // 2. Deduct Coins from Wallet immediately (Safety Logic)
       await updateDoc(doc(db, "users", userData.uid), {
         walletBalance: increment(-coinAmount)
       });
@@ -100,7 +100,7 @@ const Dashboard = () => {
       alert(`Success! Withdrawal request for Rs. ${payablePKR.toFixed(2)} sent.`);
       setActiveModal(null);
       setWithdrawData({ amount: '', method: '', accTitle: '', accNumber: '' });
-      window.location.reload(); // Refresh to show new balance
+      window.location.reload(); 
     } catch (error) {
       console.error("Withdrawal Error:", error);
       alert("Error processing withdrawal. Please try again.");
@@ -286,7 +286,7 @@ const Dashboard = () => {
         </div>
       </main>
 
-      {/* --- Modals (Upgrade & Withdraw) --- */}
+      {/* --- Modals --- */}
       {activeModal && (
         <div className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-[#2D1B69]/70 backdrop-blur-md">
           <div className="bg-white w-full max-w-md rounded-[50px] p-8 md:p-10 shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -321,7 +321,7 @@ const Dashboard = () => {
               </div>
             ) : (
                <form onSubmit={handleWithdraw} className="space-y-6">
-                  {/* Withdrawal Header Box */}
+                  {/* NEW LIMIT POLICY BOX */}
                   <div className="bg-red-50 p-6 rounded-[30px] text-center border border-red-100">
                     <p className="text-red-500 text-[10px] font-black uppercase mb-1">Withdrawal Policy</p>
                     <p className="text-xl font-black text-[#2D1B69] italic">Min: Rs. 500 <span className="text-[10px] text-slate-400 font-bold">(5,000 Coins)</span></p>
@@ -334,7 +334,7 @@ const Dashboard = () => {
                   </div>
 
                   <div className="space-y-4">
-                    {/* Coin Input with Live Conversion */}
+                    {/* Live Conversion Input */}
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Coins to Withdraw</label>
                       <input 
@@ -346,13 +346,13 @@ const Dashboard = () => {
                       />
                       {withdrawData.amount && (
                         <div className="flex justify-between mt-2 px-2">
-                          <p className="text-[10px] font-bold text-emerald-500 italic">Total: Rs. {Number(withdrawData.amount) / 10}</p>
-                          <p className="text-[10px] font-bold text-orange-500 italic">After Fee: Rs. {((Number(withdrawData.amount) / 10) * 0.95).toFixed(2)}</p>
+                          <p className="text-[10px] font-bold text-emerald-500 italic">PKR: Rs. {Number(withdrawData.amount) / 10}</p>
+                          <p className="text-[10px] font-bold text-orange-500 italic">Final: Rs. {((Number(withdrawData.amount) / 10) * 0.95).toFixed(2)}</p>
                         </div>
                       )}
                     </div>
 
-                    {/* Payment Method Selection */}
+                    {/* Method Selection */}
                     <div>
                       <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Select Method</label>
                       <div className="grid grid-cols-2 gap-2 mt-1">
