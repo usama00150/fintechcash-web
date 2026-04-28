@@ -1,7 +1,7 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getFirestore, doc, updateDoc, increment } from "firebase/firestore";
 
-// ⚠️ Aapki Firebase Config (Wahi jo callback.js mein hai)
+// Aapki Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyC0BjZD26bpZRQwKu1GK6AFevKqZ_t-qdE",
   authDomain: "mlm-earning-platform.firebaseapp.com",
@@ -11,33 +11,37 @@ const firebaseConfig = {
   appId: "1:457551856006:web:a8831ab277546df35dac07"
 };
 
-// Firebase initialize karein (agar pehle se nahi hai)
+// Firebase initialize karein (prevent multiple initializations)
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
 export default async function handler(req, res) {
-  // GET request check karein
-  if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
-  }
+  // Method check hata diya taake GET aur POST dono requests handle ho sakain
+  
+  // Data ko query (URL) aur body dono jagah check karein
+  const user_id = req.query.user_id || req.body.user_id;
+  const points = req.query.points || req.body.points;
 
-  const { user_id, points } = req.query;
+  console.log(`Incoming request for User: ${user_id}, Points: ${points}`);
 
   if (user_id && points) {
     try {
       const userRef = doc(db, "users", user_id);
       
-      // Balance update karein
+      // Points ko updateDoc ke zariye barhayen
       await updateDoc(userRef, {
-        walletBalance: increment(parseInt(points))
+        walletBalance: increment(Number(points))
       });
 
+      console.log("Success: Wallet updated!");
       return res.status(200).send("OK");
     } catch (error) {
-      console.error("Firestore Error:", error);
-      return res.status(500).send("Database Update Failed");
+      console.error("Firestore Update Error:", error);
+      // Status 200 hi bhej rahe hain taake CPAGrip retry na kare agar user ghalat ho
+      return res.status(200).send("Error updating balance, but request received.");
     }
   }
 
+  console.log("Failed: Missing user_id or points in request.");
   return res.status(400).send("Missing Parameters");
 }
