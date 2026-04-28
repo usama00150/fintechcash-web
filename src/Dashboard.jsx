@@ -1,6 +1,7 @@
+// Dashboard.jsx
 import React, { useEffect, useState } from 'react';
 import { auth, db } from './firebase';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, addDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 
@@ -48,7 +49,6 @@ const Dashboard = () => {
     return () => unsub();
   }, [navigate]);
 
-  // Reset internal console when changing tabs
   useEffect(() => {
     if (activeTab !== 'surveys') setIsSurveyLaunched(false);
   }, [activeTab]);
@@ -66,16 +66,45 @@ const Dashboard = () => {
 
   const handleWithdraw = async (e) => {
     e.preventDefault();
-    const amount = Number(withdrawData.amount);
-    if (amount > userData.walletBalance) return alert("Insufficient balance.");
-    const fee = amount * 0.05;
-    await addDoc(collection(db, "withdraw_requests"), { 
-      uid: userData.uid, userName: userData.name, requestedAmount: amount, payableAmount: amount - fee,
-      method: withdrawData.method, accTitle: withdrawData.accTitle, accNumber: withdrawData.accNumber,
-      status: 'pending', createdAt: serverTimestamp() 
-    });
-    alert("Withdrawal requested successfully.");
-    setActiveModal(null);
+    const coinAmount = Number(withdrawData.amount);
+
+    // 10 Coins = Rs. 1 logic => Rs. 500 = 5000 Coins
+    if (coinAmount < 5000) return alert("Minimum withdrawal limit is Rs. 500 (5,000 Coins).");
+    if (coinAmount > userData.walletBalance) return alert("Insufficient balance in your wallet.");
+    if (!withdrawData.method) return alert("Please select a payment method.");
+
+    const pkrAmount = coinAmount / 10;
+    const fee = pkrAmount * 0.05; // 5% Service Tax
+    const payablePKR = pkrAmount - fee;
+
+    try {
+      // 1. Add Request to Database
+      await addDoc(collection(db, "withdraw_requests"), { 
+        uid: userData.uid, 
+        userName: userData.name, 
+        coinAmount: coinAmount,
+        pkrAmount: pkrAmount,
+        payableAmount: payablePKR,
+        method: withdrawData.method, 
+        accTitle: withdrawData.accTitle, 
+        accNumber: withdrawData.accNumber,
+        status: 'pending', 
+        createdAt: serverTimestamp() 
+      });
+
+      // 2. Deduct Coins from Wallet immediately
+      await updateDoc(doc(db, "users", userData.uid), {
+        walletBalance: increment(-coinAmount)
+      });
+
+      alert(`Success! Withdrawal request for Rs. ${payablePKR.toFixed(2)} sent.`);
+      setActiveModal(null);
+      setWithdrawData({ amount: '', method: '', accTitle: '', accNumber: '' });
+      window.location.reload(); // Refresh to show new balance
+    } catch (error) {
+      console.error("Withdrawal Error:", error);
+      alert("Error processing withdrawal. Please try again.");
+    }
   };
 
   if (!userData) return (
@@ -90,12 +119,10 @@ const Dashboard = () => {
   return (
     <div className="flex h-screen bg-[#F8F9FD] font-sans overflow-hidden relative">
       
-      {/* 📱 Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div className="fixed inset-0 bg-[#2D1B69]/40 backdrop-blur-sm z-60 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
       )}
 
-      {/* 👈 Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-70 w-72 bg-white border-r border-slate-200 p-8 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-2">
@@ -116,10 +143,7 @@ const Dashboard = () => {
         </div>
       </aside>
 
-      {/* 👉 Main Content Area */}
       <main className="flex-1 overflow-y-auto relative">
-        
-        {/* 🚀 STICKY HEADER FOR MOBILE */}
         <div className="sticky top-0 z-50 flex items-center justify-between lg:hidden bg-white/90 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm">
            <button onClick={() => setIsSidebarOpen(true)} className="text-[#2D1B69] text-2xl p-2 hover:bg-slate-50 rounded-xl transition-all">☰</button>
            <div className="text-[#2D1B69] font-black italic tracking-tighter">FINTECH CASH</div>
@@ -127,8 +151,6 @@ const Dashboard = () => {
         </div>
 
         <div className="p-4 md:p-10 pb-24 lg:pb-10">
-          
-          {/* Top Bar (Desktop Style) */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
             <div className="hidden md:block">
               <h1 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic">
@@ -147,7 +169,6 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* --- Tab Content: Dashboard --- */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6 animate-in fade-in duration-500">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -185,7 +206,6 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* --- Tab Content: Earning Hub (Surveys) --- */}
           {activeTab === 'surveys' && (
             <div className="w-full max-w-5xl mx-auto">
               {!isSurveyLaunched ? (
@@ -204,7 +224,6 @@ const Dashboard = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {/* TheoremReach Card (External) */}
                       <a 
                         href={`https://www.theoremreach.com/respondent_entry/direct?api_key=d7c4aff2362e855e36808605c173&user_id=${userData.uid}`}
                         target="_blank" rel="noopener noreferrer"
@@ -216,7 +235,6 @@ const Dashboard = () => {
                          <div className="inline-block bg-blue-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg">Open Portal 🚀</div>
                       </a>
 
-                      {/* CPAGrip Card (Internal) */}
                       <div 
                         onClick={() => setIsSurveyLaunched(true)}
                         className="bg-white p-10 rounded-[50px] shadow-xl border border-slate-50 hover:scale-[1.02] transition-all group cursor-pointer text-left"
@@ -230,7 +248,6 @@ const Dashboard = () => {
                   )}
                 </div>
               ) : (
-                /* 📱 CPAGrip Full-Screen Interface */
                 <div className="fixed inset-0 z-100 bg-[#F8F9FD] flex flex-col lg:relative lg:h-[85vh] lg:rounded-[40px] lg:overflow-hidden lg:z-10 animate-in fade-in duration-300">
                    <div className="bg-white p-4 flex items-center justify-between border-b border-slate-100 lg:px-8">
                       <button onClick={() => setIsSurveyLaunched(false)} className="bg-[#2D1B69] text-white px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase italic shadow-md active:scale-95 transition-all">← Back to Hub</button>
@@ -249,7 +266,6 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* --- Tab Content: Network --- */}
           {activeTab === 'network' && (
             <div className="bg-white p-8 md:p-12 rounded-[40px] shadow-sm border border-slate-100 animate-in fade-in">
               <h3 className="text-2xl font-black text-slate-800 uppercase italic text-center mb-12 tracking-tighter">Your Referral Registry</h3>
@@ -305,17 +321,56 @@ const Dashboard = () => {
               </div>
             ) : (
                <form onSubmit={handleWithdraw} className="space-y-6">
-                  <div className="bg-teal-50 p-8 rounded-[35px] text-center border border-teal-100">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Current Balance</p>
-                    <p className="text-4xl font-black text-teal-600 italic tracking-tighter">{userData.walletBalance} Coins</p>
+                  {/* Withdrawal Header Box */}
+                  <div className="bg-red-50 p-6 rounded-[30px] text-center border border-red-100">
+                    <p className="text-red-500 text-[10px] font-black uppercase mb-1">Withdrawal Policy</p>
+                    <p className="text-xl font-black text-[#2D1B69] italic">Min: Rs. 500 <span className="text-[10px] text-slate-400 font-bold">(5,000 Coins)</span></p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">10 Coins = Rs. 1 | Fee: 5%</p>
                   </div>
-                  <div className="space-y-3">
-                    <input type="number" placeholder="Enter Coin Amount" className="w-full p-6 bg-slate-50 rounded-3xl outline-none font-black text-center text-2xl text-[#2D1B69] border border-slate-100" onChange={(e)=>setWithdrawData({...withdrawData, amount: e.target.value})} required />
-                    <select className="w-full p-5 bg-slate-50 rounded-2xl text-[10px] font-black uppercase outline-none border border-slate-100" onChange={(e)=>setWithdrawData({...withdrawData, method: e.target.value})} required>
-                      <option value="">Select Gateway</option><option value="EasyPaisa">EasyPaisa</option><option value="JazzCash">JazzCash</option><option value="Bank">Bank Transfer</option>
-                    </select>
+
+                  <div className="bg-teal-50 p-6 rounded-[30px] text-center border border-teal-100">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Available Balance</p>
+                    <p className="text-2xl font-black text-teal-600 italic tracking-tighter">{userData.walletBalance} Coins</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Coin Input with Live Conversion */}
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Coins to Withdraw</label>
+                      <input 
+                        type="number" 
+                        placeholder="Minimum 5000" 
+                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-black text-xl text-[#2D1B69] border border-slate-100" 
+                        onChange={(e)=>setWithdrawData({...withdrawData, amount: e.target.value})} 
+                        required 
+                      />
+                      {withdrawData.amount && (
+                        <div className="flex justify-between mt-2 px-2">
+                          <p className="text-[10px] font-bold text-emerald-500 italic">Total: Rs. {Number(withdrawData.amount) / 10}</p>
+                          <p className="text-[10px] font-bold text-orange-500 italic">After Fee: Rs. {((Number(withdrawData.amount) / 10) * 0.95).toFixed(2)}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Payment Method Selection */}
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Select Method</label>
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        {['EasyPaisa', 'JazzCash', 'Bank Transfer', 'Nayapay'].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setWithdrawData({ ...withdrawData, method: m })}
+                            className={`p-3 rounded-xl border text-[10px] font-black uppercase transition-all ${withdrawData.method === m ? 'bg-[#2D1B69] text-white border-[#2D1B69]' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <input type="text" placeholder="Account Title" className="w-full p-5 bg-slate-50 rounded-2xl outline-none text-[11px] font-bold border border-slate-100" onChange={(e)=>setWithdrawData({...withdrawData, accTitle: e.target.value})} required />
-                    <input type="text" placeholder="Account Number" className="w-full p-5 bg-slate-50 rounded-2xl outline-none text-[11px] font-bold border border-slate-100" onChange={(e)=>setWithdrawData({...withdrawData, accNumber: e.target.value})} required />
+                    <input type="text" placeholder="Account Number / IBAN" className="w-full p-5 bg-slate-50 rounded-2xl outline-none text-[11px] font-bold border border-slate-100" onChange={(e)=>setWithdrawData({...withdrawData, accNumber: e.target.value})} required />
                   </div>
                   <button type="submit" className="w-full bg-[#2D1B69] text-white p-6 rounded-3xl font-black uppercase italic text-xs shadow-2xl active:scale-95 transition-all mt-2">Process Withdrawal 💰</button>
                </form>
@@ -328,7 +383,6 @@ const Dashboard = () => {
   );
 };
 
-// --- Helper Component: NavItem ---
 const NavItem = ({ icon, label, active = false, onClick }) => (
   <div onClick={onClick} className={`flex items-center gap-4 px-6 py-4 rounded-2xl cursor-pointer transition-all duration-300 ${active ? 'bg-teal-50 text-[#2D1B69] font-black border-l-4 border-teal-400 shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600 font-bold'}`}>
     <span className="text-2xl">{icon}</span>

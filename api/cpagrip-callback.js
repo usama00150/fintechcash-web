@@ -1,7 +1,6 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getFirestore, doc, updateDoc, increment } from "firebase/firestore";
 
-// Aapki Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyC0BjZD26bpZRQwKu1GK6AFevKqZ_t-qdE",
   authDomain: "mlm-earning-platform.firebaseapp.com",
@@ -11,37 +10,34 @@ const firebaseConfig = {
   appId: "1:457551856006:web:a8831ab277546df35dac07"
 };
 
-// Firebase initialize karein (prevent multiple initializations)
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
 export default async function handler(req, res) {
-  // Method check hata diya taake GET aur POST dono requests handle ho sakain
-  
-  // Data ko query (URL) aur body dono jagah check karein
   const user_id = req.query.user_id || req.body.user_id;
-  const points = req.query.points || req.body.points;
-
-  console.log(`Incoming request for User: ${user_id}, Points: ${points}`);
+  const points = req.query.points || req.body.points; // CPAGrip payout (e.g., 0.12)
 
   if (user_id && points) {
     try {
       const userRef = doc(db, "users", user_id);
       
-      // Points ko updateDoc ke zariye barhayen
-      await updateDoc(userRef, {
-        walletBalance: increment(Number(points))
-      });
+      // LOGIC: $1 = 500 Coins (Jo Rs. 50 ke barabar hain)
+      const multiplier = 500; 
+      const totalCoins = Math.floor(Number(points) * multiplier); 
 
-      console.log("Success: Wallet updated!");
-      return res.status(200).send("OK");
+      if (totalCoins > 0) {
+        await updateDoc(userRef, {
+          walletBalance: increment(totalCoins)
+        });
+        console.log(`Success: Added ${totalCoins} coins to ${user_id}`);
+        return res.status(200).send("OK");
+      } else {
+        return res.status(200).send("Payout too small");
+      }
     } catch (error) {
-      console.error("Firestore Update Error:", error);
-      // Status 200 hi bhej rahe hain taake CPAGrip retry na kare agar user ghalat ho
-      return res.status(200).send("Error updating balance, but request received.");
+      console.error("Firestore Error:", error);
+      return res.status(200).send("Error");
     }
   }
-
-  console.log("Failed: Missing user_id or points in request.");
-  return res.status(400).send("Missing Parameters");
+  return res.status(400).send("Missing Data");
 }
