@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase'; 
 import { doc, updateDoc, increment } from "firebase/firestore";
 
-const ADReward = ({ userId }) => {
+const AdReward = ({ userId }) => {
   const [timer, setTimer] = useState(30);
   const [status, setStatus] = useState('idle'); // idle, counting, claim, cooldown
   const timerRef = useRef(null);
@@ -103,4 +103,4 @@ const ADReward = ({ userId }) => {
   );
 };
 
-export default ADReward;
+export default AdReward;

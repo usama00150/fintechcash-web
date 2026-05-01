@@ -6,7 +6,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 
 // 1. ADReward Component ko import karein
-import ADReward from './components/ADReward'; 
+import ADReward from './components/AdReward'; 
 
 const plans = [
   { name: 'Basic', price: 1000 },
