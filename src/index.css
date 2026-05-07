@@ -1,1 +1,36 @@
 @import "tailwindcss";
+
+/* --- Custom Glassmorphism Effect --- */
+@utility glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* --- Global Body Styles --- */
+body {
+  background-color: #050505; /* Deep Black */
+  color: #ffffff;
+  overflow-x: hidden;
+}
+
+/* --- Custom Neon Scrollbar --- */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #A855F7, #3B82F6);
+  border-radius: 10px;
+}
+
+/* Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+}

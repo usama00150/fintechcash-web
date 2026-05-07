@@ -1,405 +1,417 @@
-// Dashboard.jsx
+// Dashboard.jsx 
 import React, { useEffect, useState } from 'react';
 import { auth, db } from './firebase';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, addDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
-// 1. ADReward Component ko import karein
-import ADReward from './components/AdReward'; 
+// Components
+import AdReward from './components/AdReward'; 
+import LiveTicker from './components/LiveTicker';
 
+// Dollar Plans
 const plans = [
-  { name: 'Basic', price: 1000 },
-  { name: 'Professional', price: 2500 },
-  { name: 'Elite', price: 5000 }
+  { name: 'Basic', price: 5 },
+  { name: 'Standard', price: 10 },
+  { name: 'Professional', price: 25 },
+  { name: 'Elite', price: 50 }
 ];
 
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
   const [myTeam, setMyTeam] = useState([]);
+  const [pendingUsers, setPendingUsers] = useState([]); // For Admin
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activeModal, setActiveModal] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [tid, setTid] = useState('');
   const [senderAccount, setSenderAccount] = useState('');
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('bank'); 
   const [withdrawData, setWithdrawData] = useState({ amount: '', method: '', accTitle: '', accNumber: '' });
-  const [isSurveyLaunched, setIsSurveyLaunched] = useState(false);
 
   const navigate = useNavigate();
 
   // --- Auth & Data Fetching ---
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
       if (user) {
-        try {
-          const snap = await getDoc(doc(db, "users", user.uid));
+        getDoc(doc(db, "users", user.uid)).then((snap) => {
           if (snap.exists()) {
-            // User UID ko state mein save karna zaroori hai components ke liye
-            setUserData({ ...snap.data(), uid: user.uid }); 
-            const qTeam = query(
-              collection(db, "users"), 
-              where("referredBy", "==", user.uid),
-              where("status", "==", "active")
-            );
-            const tSnap = await getDocs(qTeam);
-            setMyTeam(tSnap.docs.map(d => ({ name: d.data().name, plan: d.data().plan })));
+            const data = snap.data();
+            setUserData({ ...data, uid: user.uid }); 
+            
+            // Fetch Team
+            const qTeam = query(collection(db, "users"), where("referredBy", "==", user.uid), where("status", "==", "active"));
+            getDocs(qTeam).then((tSnap) => {
+              setMyTeam(tSnap.docs.map(d => ({ name: d.data().name, plan: d.data().plan })));
+            });
+
+            // Fetch Pending Requests for Admin
+            if (data.role === 'admin') {
+              const qPending = query(collection(db, "users"), where("status", "==", "pending_approval"));
+              getDocs(qPending).then((pSnap) => {
+                setPendingUsers(pSnap.docs.map(d => ({ ...d.data(), id: d.id })));
+              });
+            }
           }
-        } catch (err) { console.error("Data Fetch Error:", err); }
+        });
       } else {
         navigate('/login');
       }
     });
+
+    // --- ⚠️ MASS RESET SCRIPT (Disabled for Safety) ⚠️ ---
+    const massReset = async () => {
+        const querySnapshot = await getDocs(collection(db, "users"));
+        querySnapshot.forEach(async (uDoc) => {
+            await updateDoc(doc(db, "users", uDoc.id), {
+                status: "inactive",
+                plan: "None",
+                planPrice: 0,
+                walletBalance: 0 
+            });
+        });
+        alert("RESET DONE: All users are now inactive with 0 balance!");
+    };
+
+    // ✅ MASRESET LINE IS NOW COMMENTED:
+    // massReset(); 
+
     return () => unsub();
-  }, [navigate]);
+  }, [navigate, activeTab]);
 
-  useEffect(() => {
-    if (activeTab !== 'surveys') setIsSurveyLaunched(false);
-  }, [activeTab]);
-
-  // --- Logic Handlers ---
-  const handleActivationRequest = async () => {
-    if(!tid || !senderAccount || !selectedPlan) return alert("Please fill all fields.");
-    await updateDoc(doc(db, "users", userData.uid), {
-      plan: selectedPlan.name, planPrice: selectedPlan.price, tid: tid, senderAccount: senderAccount, status: "pending_approval"
+  // --- Admin Actions ---
+  const approveUser = (uid, planName) => {
+    updateDoc(doc(db, "users", uid), {
+      status: "active",
+      plan: planName
+    }).then(() => {
+      alert("User Activated Successfully!");
+      window.location.reload();
     });
-    alert("Request submitted! Verification in progress.");
-    setActiveModal(null);
-    window.location.reload();
   };
 
-  const handleWithdraw = async (e) => {
+  const removeRequest = (uid) => {
+    updateDoc(doc(db, "users", uid), {
+      status: "inactive",
+      tid: "",
+      senderAccount: "",
+      plan: "None"
+    }).then(() => {
+      alert("Request Removed.");
+      window.location.reload();
+    });
+  };
+
+  // --- User Actions ---
+  const handleActivationRequest = () => {
+    if(!tid || !senderAccount || !selectedPlan) return alert("Please fill all fields.");
+    updateDoc(doc(db, "users", userData.uid), {
+      plan: selectedPlan.name, 
+      planPrice: selectedPlan.price, 
+      tid: tid, 
+      senderAccount: senderAccount, 
+      status: "pending_approval",
+      paymentMethod: paymentMethod,
+      currency: 'USD'
+    }).then(() => {
+      alert("Request submitted! Verification in progress.");
+      setActiveModal(null);
+      window.location.reload();
+    });
+  };
+
+  const handleWithdraw = (e) => {
     e.preventDefault();
     const coinAmount = Number(withdrawData.amount);
-
-    if (coinAmount < 5000) return alert("Minimum withdrawal limit is Rs. 500 (5,000 Coins).");
+    if (coinAmount < 5000) return alert("Minimum withdrawal is 5,000 Coins.");
     if (coinAmount > userData.walletBalance) return alert("Insufficient balance!");
-    if (!withdrawData.method) return alert("Select a method.");
 
-    const pkrAmount = coinAmount / 10;
-    const fee = pkrAmount * 0.05; 
-    const payablePKR = pkrAmount - fee;
-
-    try {
-      await addDoc(collection(db, "withdraw_requests"), { 
-        uid: userData.uid, 
-        userName: userData.name, 
-        coinAmount: coinAmount,
-        pkrAmount: pkrAmount,
-        payableAmount: payablePKR,
-        method: withdrawData.method, 
-        accTitle: withdrawData.accTitle, 
-        accNumber: withdrawData.accNumber,
-        status: 'pending', 
-        createdAt: serverTimestamp() 
-      });
-
-      await updateDoc(doc(db, "users", userData.uid), {
-        walletBalance: increment(-coinAmount)
-      });
-
-      alert(`Success! Withdrawal for Rs. ${payablePKR.toFixed(2)} sent.`);
+    addDoc(collection(db, "withdraw_requests"), { 
+      uid: userData.uid, userName: userData.name, coinAmount,
+      method: withdrawData.method, accTitle: withdrawData.accTitle, accNumber: withdrawData.accNumber,
+      status: 'pending', createdAt: serverTimestamp() 
+    }).then(() => {
+      updateDoc(doc(db, "users", userData.uid), { walletBalance: increment(-coinAmount) });
+      alert(`Success! Withdrawal request sent.`);
       setActiveModal(null);
-      setWithdrawData({ amount: '', method: '', accTitle: '', accNumber: '' });
       window.location.reload(); 
-    } catch (error) {
-      console.error("Withdrawal Error:", error);
-    }
+    });
   };
 
   if (!userData) return (
-    <div className="h-screen flex items-center justify-center bg-[#F8F9FD]">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#2D1B69]"></div>
+    <div className="h-screen flex items-center justify-center bg-[#050505]">
+      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="h-12 w-12 border-t-2 border-b-2 border-purple-500 rounded-full"></motion.div>
     </div>
   );
 
-  const isLocked = userData.status === 'inactive' || userData.status === 'pending_approval';
-  const canAccessSurveys = ['Professional', 'Elite'].includes(userData.plan);
+  const hasPremiumAccess = ['Professional', 'Elite'].includes(userData.plan);
 
   return (
-    <div className="flex h-screen bg-[#F8F9FD] font-sans overflow-hidden relative">
-      
+    <div className="flex h-screen bg-[#050505] text-white font-sans overflow-hidden relative">
+      <div className="absolute top-0 right-0 w-125 h-125 bg-purple-600/5 blur-[120px] -z-10"></div>
+      <div className="absolute bottom-0 left-0 w-125 h-125 bg-blue-600/5 blur-[120px] -z-10"></div>
+
       {isSidebarOpen && (
-        <div className="fixed inset-0 bg-[#2D1B69]/40 backdrop-blur-sm z-60 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)}></div>
       )}
 
-      {/* Sidebar Section */}
-      <aside className={`fixed inset-y-0 left-0 z-70 w-72 bg-white border-r border-slate-200 p-8 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-[#2D1B69] rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg italic">F</div>
-            <span className="text-xl font-bold text-[#2D1B69] tracking-tighter uppercase italic">FintechCash</span>
-          </div>
-          <button className="lg:hidden text-slate-400 text-3xl" onClick={() => setIsSidebarOpen(false)}>&times;</button>
+      {/* --- Sidebar --- */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#0a0a0a]/90 backdrop-blur-xl border-r border-white/5 p-8 transform transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center gap-3 mb-12">
+          <div className="w-10 h-10 bg-linear-to-br from-purple-600 to-blue-600 rounded-xl flex items-center justify-center font-black text-xl italic shadow-[0_0_15px_rgba(168,85,247,0.4)]">F</div>
+          <span className="text-xl font-bold tracking-tighter uppercase italic">FintechCash</span>
         </div>
-
-        <nav className="space-y-2 flex-1">
+        <nav className="space-y-4">
           <NavItem icon="📊" label="Dashboard" active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsSidebarOpen(false); }} />
-          <NavItem icon="📝" label="Earn Coins" active={activeTab === 'surveys'} onClick={() => { setActiveTab('surveys'); setIsSidebarOpen(false); }} />
-          <NavItem icon="👥" label="Network" active={activeTab === 'network'} onClick={() => { setActiveTab('network'); setIsSidebarOpen(false); }} />
+          <NavItem icon="⚡" label="Earn Coins" active={activeTab === 'surveys'} onClick={() => { setActiveTab('surveys'); setIsSidebarOpen(false); }} />
+          <NavItem icon="👥" label="My Team" active={activeTab === 'network'} onClick={() => { setActiveTab('network'); setIsSidebarOpen(false); }} />
+          {userData.role === 'admin' && (
+            <NavItem icon="🛡️" label="Admin Panel" active={activeTab === 'admin'} onClick={() => { setActiveTab('admin'); setIsSidebarOpen(false); }} />
+          )}
         </nav>
-
-        <div className="pt-6 border-t border-slate-100">
-           <button onClick={() => signOut(auth)} className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 font-bold text-xs hover:text-red-500 transition-all uppercase tracking-widest text-left">🚪 Sign Out</button>
-        </div>
+        <button onClick={() => signOut(auth)} className="absolute bottom-12 left-8 text-slate-500 hover:text-red-500 font-bold text-[10px] uppercase">🚪 Sign Out</button>
       </aside>
 
-      {/* Main Content Section */}
-      <main className="flex-1 overflow-y-auto relative">
-        <div className="sticky top-0 z-50 flex items-center justify-between lg:hidden bg-white/90 backdrop-blur-md p-4 border-b border-slate-100 shadow-sm">
-           <button onClick={() => setIsSidebarOpen(true)} className="text-[#2D1B69] text-2xl p-2 hover:bg-slate-50 rounded-xl transition-all">☰</button>
-           <div className="text-[#2D1B69] font-black italic tracking-tighter">FINTECH CASH</div>
-           <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center text-xs">👤</div>
+      {/* --- Main Content --- */}
+      <main className="flex-1 overflow-y-auto relative pb-24">
+        <div className="sticky top-0 z-30 lg:hidden flex justify-between items-center bg-black/40 backdrop-blur-md p-4 border-b border-white/5">
+           <button onClick={() => setIsSidebarOpen(true)} className="text-white text-2xl">☰</button>
+           <div className="text-purple-500 font-black italic tracking-tighter text-sm">FINTECH CASH</div>
+           <div className="w-8 h-8 bg-purple-500/20 rounded-full"></div>
         </div>
 
-        <div className="p-4 md:p-10 pb-24 lg:pb-10">
+        <div className="p-4 md:p-10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
-            <div className="hidden md:block">
-              <h1 className="text-3xl font-black text-slate-800 tracking-tighter uppercase italic">
-                {activeTab === 'dashboard' ? 'Dashboard' : activeTab === 'surveys' ? 'Earning Hub' : 'Network'}
+            <div>
+              <h1 className="text-4xl font-black uppercase italic tracking-tighter">
+                {activeTab === 'admin' ? 'Management' : activeTab === 'dashboard' ? 'Overview' : activeTab === 'surveys' ? 'Earning Hub' : 'Network'}
               </h1>
-              <p className="text-slate-400 text-[9px] font-bold uppercase tracking-widest mt-1">Official Console</p>
+              <p className="text-purple-400 text-[10px] font-bold uppercase tracking-widest mt-1 italic">Operator: {userData.name}</p>
             </div>
             
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              {isLocked ? (
-                <button onClick={() => setActiveModal('upgrade')} className="flex-1 md:flex-none bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase italic shadow-lg animate-pulse">Activate Account ⚡</button>
+            <div className="flex items-center gap-3">
+              {userData.status === 'pending_approval' ? (
+                <div className="glass-card px-8 py-4 border-l-4 border-orange-500 text-orange-400 font-black text-[10px] uppercase italic animate-pulse">Verification Pending... ⏳</div>
+              ) : userData.status === 'inactive' ? (
+                <button onClick={() => setActiveModal('upgrade')} className="bg-purple-600 px-8 py-4 rounded-2xl font-black text-[10px] uppercase italic shadow-lg">Activate Plan ⚡</button>
               ) : (
-                <div className="flex-1 md:flex-none bg-teal-50 text-[#2D1B69] px-8 py-4 rounded-2xl border border-teal-100 font-black text-[10px] uppercase italic text-center">{userData.plan} Member</div>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="glass-card px-8 py-3 border-l-4 border-purple-500 text-purple-400 font-black italic text-sm">{userData.plan} Member</div>
+                  <button onClick={() => setActiveModal('upgrade')} className="text-[9px] font-black uppercase text-purple-500 hover:text-white transition-all underline italic">Upgrade Plan ↑</button>
+                </div>
               )}
             </div>
           </div>
 
-          {/* TAB: DASHBOARD */}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6 animate-in fade-in duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Available Coins</p>
-                    <h2 className="text-3xl font-black text-[#2D1B69] mb-8">{userData.walletBalance} <span className="text-sm font-bold text-slate-300">Coins</span></h2>
-                    <button onClick={() => setActiveModal('withdraw')} className="w-full py-4 bg-[#F8F9FD] hover:bg-[#2D1B69] hover:text-white border border-slate-200 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Withdraw Funds</button>
-                 </div>
-
-                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">Network Status</p>
-                    <h2 className="text-3xl font-black text-slate-800 mb-4">{myTeam.length} <span className="text-sm font-bold text-slate-300">Active</span></h2>
-                    <div className="flex items-end gap-1.5 h-12">
-                       {[40, 70, 45, 90, 65, 80, 50].map((h, i) => (
-                        <div key={i} style={{height: `${h}%`}} className={`flex-1 rounded-md ${i===3 ? 'bg-teal-400' : 'bg-slate-50'}`}></div>
-                       ))}
-                    </div>
-                 </div>
-
-                 <div className="bg-[#2D1B69] p-8 rounded-[40px] shadow-xl text-white">
-                    <p className="text-teal-300 text-[10px] font-bold uppercase tracking-widest mb-2">Total Earnings</p>
-                    <h2 className="text-3xl font-black">{userData.walletBalance + (userData.totalWithdraw || 0)}</h2>
-                    <p className="text-[10px] font-bold text-teal-500 uppercase mt-4 italic">Lifetime Growth ↑</p>
-                 </div>
-              </div>
-
-              <div className="bg-white p-8 md:p-10 rounded-[40px] shadow-sm border border-slate-100">
-                 <h3 className="text-lg font-black text-slate-800 mb-2 uppercase italic tracking-tighter">Affiliate Link</h3>
-                 <p className="text-[10px] text-slate-400 mb-6 font-bold uppercase tracking-widest">Share and earn 15% commissions</p>
-                 <div className="flex flex-col sm:flex-row gap-3 p-3 bg-[#F8F9FD] border border-slate-100 rounded-3xl">
-                    <input readOnly value={`${window.location.origin}/signup?ref=${userData.uid}`} className="bg-transparent flex-1 text-[10px] font-mono text-slate-500 px-4 py-2 outline-none overflow-hidden text-ellipsis" />
-                    <button onClick={()=>{navigator.clipboard.writeText(`${window.location.origin}/signup?ref=${userData.uid}`); alert("Link Copied!")}} className="bg-teal-400 text-[#2D1B69] px-8 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg">Copy Link</button>
-                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB: EARN COINS (Surveys + ADReward) */}
-          {activeTab === 'surveys' && (
-            <div className="w-full max-w-5xl mx-auto space-y-10">
-              
-              {/* 2. ADReward Section (Sab se upar priority par) */}
-              <div className="animate-in slide-in-from-top-5 duration-500">
-                <div className="text-center mb-6">
-                  <h2 className="text-2xl font-black text-slate-800 uppercase italic tracking-tighter">⚡ Instant Rewards</h2>
-                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">No surveys needed - Guaranteed coins</p>
-                </div>
-                {/* UID passing zaroori hai rewards ke liye */}
-                <ADReward userId={userData.uid} />
-              </div>
-
-              <hr className="border-slate-100" />
-
-              {/* Offerwalls Section */}
-              {!isSurveyLaunched ? (
-                <div className="space-y-8">
-                  <div className="text-center mb-10">
-                    <h2 className="text-2xl font-black text-slate-800 uppercase italic tracking-tighter">Premium Offerwalls</h2>
-                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-2">Professional & Elite Access Only</p>
-                  </div>
-
-                  {!canAccessSurveys ? (
-                    <div className="bg-white p-12 rounded-[50px] shadow-2xl text-center border-4 border-dashed border-slate-50 max-w-xl mx-auto">
-                       <div className="text-5xl mb-6">🔐</div>
-                       <h3 className="text-2xl font-black text-slate-800 uppercase italic">Portal Locked</h3>
-                       <p className="text-slate-400 text-[10px] font-bold uppercase mt-2 mb-10 tracking-widest">Upgrade plan to unlock TheoremReach & CPAGrip</p>
-                       <button onClick={() => setActiveModal('upgrade')} className="bg-[#2D1B69] text-white px-12 py-5 rounded-3xl font-black text-xs uppercase italic shadow-xl">Upgrade Account ⚡</button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <a 
-                        href={`https://www.theoremreach.com/respondent_entry/direct?api_key=d7c4aff2362e855e36808605c173&user_id=${userData.uid}`}
-                        target="_blank" rel="noopener noreferrer"
-                        className="bg-white p-10 rounded-[50px] shadow-xl border border-slate-50 hover:scale-[1.02] transition-all group no-underline text-left block"
-                      >
-                         <div className="w-16 h-16 bg-blue-50 rounded-[25px] flex items-center justify-center text-3xl mb-8">💎</div>
-                         <h3 className="text-2xl font-black text-slate-800 uppercase italic">TheoremReach</h3>
-                         <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-2 mb-8">Global surveys with high rewards.</p>
-                         <div className="inline-block bg-blue-500 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg">Open Surveys 🚀</div>
-                      </a>
-
-                      <div 
-                        onClick={() => setIsSurveyLaunched(true)}
-                        className="bg-white p-10 rounded-[50px] shadow-xl border border-slate-100 hover:scale-[1.02] transition-all group cursor-pointer text-left"
-                      >
-                         <div className="w-16 h-16 bg-orange-50 rounded-[25px] flex items-center justify-center text-3xl mb-8">🔥</div>
-                         <h3 className="text-2xl font-black text-slate-800 uppercase italic">CPAGrip Offers</h3>
-                         <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-2 mb-8">Fast tasks and app installs.</p>
-                         <div className="inline-block bg-[#FF4B2B] text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg">View Offers 🔥</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="fixed inset-0 z-100 bg-[#F8F9FD] flex flex-col lg:relative lg:h-[85vh] lg:rounded-[40px] lg:overflow-hidden animate-in fade-in">
-                   <div className="bg-white p-4 flex items-center justify-between border-b border-slate-100">
-                      <button onClick={() => setIsSurveyLaunched(false)} className="bg-[#2D1B69] text-white px-6 py-2.5 rounded-2xl font-black text-[10px] uppercase italic transition-all">← Back to Hub</button>
-                      <div className="hidden sm:block text-[#2D1B69] font-black text-[10px] uppercase italic tracking-widest">CPAGrip Rewards</div>
-                      <div className="w-8 h-8 bg-orange-50 rounded-lg flex items-center justify-center text-xs">🔥</div>
+          <AnimatePresence mode="wait">
+            {activeTab === 'dashboard' && (
+              <motion.div key="dash" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                   <div className="glass-card p-8 rounded-[40px] group">
+                      <p className="text-slate-500 text-[10px] font-black uppercase mb-2">Available Balance</p>
+                      <h2 className="text-4xl font-black text-white mb-8">{userData.walletBalance} <span className="text-sm font-bold text-purple-400 italic">Coins</span></h2>
+                      <button onClick={() => setActiveModal('withdraw')} className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-[10px] uppercase hover:bg-purple-600 transition-all">Withdraw Funds</button>
                    </div>
-                   <div className="flex-1 bg-white relative">
-                      <iframe 
-                        src={`https://www.cpagrip.com/show.php?l=0&u=2521913&id=1892780&tracking_id=${userData.uid}`} 
-                        width="100%" height="100%" frameBorder="0" title="CPAGrip"
-                        className="w-full h-full"
-                      ></iframe>
+                   <div className="glass-card p-8 rounded-[40px]"><p className="text-slate-500 text-[10px] font-black uppercase mb-2">Active Team</p><h2 className="text-4xl font-black text-white mb-4">{myTeam.length} Members</h2></div>
+                   <div className="bg-linear-to-br from-purple-600 to-blue-700 p-8 rounded-[40px] shadow-2xl"><p className="text-white/60 text-[10px] font-black uppercase mb-2">Total Accumulated</p><h2 className="text-4xl font-black italic text-white">{userData.walletBalance + (userData.totalWithdraw || 0)}</h2></div>
+                </div>
+                <div className="glass-card p-8 md:p-10 rounded-[40px]">
+                   <h3 className="text-lg font-black text-white mb-2 uppercase italic">Affiliate Hub</h3>
+                   <div className="flex flex-col sm:flex-row gap-3 p-2 bg-black/40 rounded-3xl border border-white/5">
+                      <input readOnly value={`${window.location.origin}/signup?ref=${userData.uid}`} className="bg-transparent flex-1 text-[10px] font-mono text-purple-300 px-4 py-3 outline-none" />
+                      <button onClick={()=>{navigator.clipboard.writeText(`${window.location.origin}/signup?ref=${userData.uid}`); alert("Link Copied!")}} className="bg-purple-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase">Copy Link</button>
                    </div>
                 </div>
-              )}
-            </div>
-          )}
+              </motion.div>
+            )}
 
-          {/* TAB: NETWORK */}
-          {activeTab === 'network' && (
-            <div className="bg-white p-8 md:p-12 rounded-[40px] shadow-sm border border-slate-100 animate-in fade-in">
-              <h3 className="text-2xl font-black text-slate-800 uppercase italic text-center mb-12 tracking-tighter">Referral Registry</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                 {myTeam.map((m, i) => (
-                   <div key={i} className="bg-[#F8F9FD] p-6 rounded-3xl border border-slate-100 flex items-center gap-5">
-                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-xl">👤</div>
-                      <div>
-                        <p className="font-black text-slate-800 uppercase text-xs">{m.name}</p>
-                        <p className="text-[9px] text-teal-500 font-black uppercase italic tracking-widest">{m.plan} Member</p>
-                      </div>
-                   </div>
-                 ))}
-                 {myTeam.length === 0 && <p className="col-span-full py-20 text-center text-slate-300 font-bold uppercase italic text-[11px]">No active members found</p>}
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
-
-      {/* --- Modals Section --- */}
-      {activeModal && (
-        <div className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-[#2D1B69]/70 backdrop-blur-md">
-          <div className="bg-white w-full max-w-md rounded-[50px] p-8 md:p-10 shadow-2xl overflow-y-auto max-h-[90vh]">
-            <div className="flex justify-between items-center mb-10">
-                <h2 className="text-2xl font-black uppercase italic text-slate-800 tracking-tighter">{activeModal === 'upgrade' ? 'Activation' : 'Withdraw'}</h2>
-                <button onClick={() => setActiveModal(null)} className="text-slate-300 text-4xl hover:text-red-500 transition-all">&times;</button>
-            </div>
-            
-            {activeModal === 'upgrade' ? (
-              <div className="space-y-6">
-                 <div className="bg-[#2D1B69] p-8 rounded-[35px] text-white text-center border-b-8 border-teal-400">
-                    <p className="text-[10px] font-black text-teal-300 uppercase italic mb-2 tracking-widest">Meezan Bank Account</p>
-                    <p className="text-xs font-bold uppercase mb-1">Title: USAMA</p>
-                    <p className="text-xl font-black tracking-widest font-mono text-teal-50">00300109721101</p>
-                 </div>
-                 
-                 <div className="grid grid-cols-1 gap-3">
-                    {plans.map(p => (
-                      <div key={p.name} onClick={() => setSelectedPlan(p)} className={`p-5 border-2 rounded-3xl flex justify-between items-center cursor-pointer transition-all ${selectedPlan?.name === p.name ? 'border-teal-400 bg-teal-50 shadow-md scale-[1.02]' : 'border-slate-50 bg-slate-50'}`}>
-                        <p className="text-[11px] font-black uppercase text-slate-700">{p.name}</p>
-                        <p className="font-black text-sm text-[#2D1B69]">Rs. {p.price}</p>
-                      </div>
-                    ))}
-                 </div>
-
-                 <div className="space-y-3">
-                    <input type="text" placeholder="Sender Account Name" className="w-full p-5 bg-slate-50 rounded-2xl outline-none text-[11px] font-bold border border-slate-100" onChange={(e)=>setSenderAccount(e.target.value)} />
-                    <input type="text" placeholder="Transaction ID (TID)" className="w-full p-5 bg-slate-50 rounded-2xl outline-none text-[11px] font-black text-blue-600 border border-slate-100" onChange={(e)=>setTid(e.target.value)} />
-                 </div>
-                 
-                 <button onClick={handleActivationRequest} className="w-full bg-[#2D1B69] text-white p-5 rounded-3xl font-black uppercase italic text-xs shadow-2xl transition-all mt-4">Confirm Activation 🚀</button>
-              </div>
-            ) : (
-               <form onSubmit={handleWithdraw} className="space-y-6">
-                  <div className="bg-red-50 p-6 rounded-[30px] text-center border border-red-100">
-                    <p className="text-red-500 text-[10px] font-black uppercase mb-1">Limit Policy</p>
-                    <p className="text-xl font-black text-[#2D1B69] italic">Min: 5,000 Coins <span className="text-[10px] text-slate-400">(Rs. 500)</span></p>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">10 Coins = Rs. 1 | Fee: 5%</p>
+            {activeTab === 'surveys' && (
+              <motion.div key="earn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full max-w-5xl mx-auto space-y-12">
+                {!hasPremiumAccess ? (
+                  <div className="glass-card p-16 text-center max-w-xl mx-auto border-dashed border-white/10">
+                     <div className="text-6xl mb-6">🔐</div>
+                     <h2 className="text-2xl font-black uppercase italic text-white">Premium Content Locked</h2>
+                     <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-4 mb-10 leading-relaxed">Upgrade to Professional or Elite plan to unlock TheoremReach Surveys & Adsterra Rewards.</p>
+                     <button onClick={() => setActiveModal('upgrade')} className="bg-purple-600 text-white px-12 py-5 rounded-3xl font-black text-xs uppercase italic shadow-2xl">Upgrade Now ⚡</button>
                   </div>
-
-                  <div className="bg-teal-50 p-6 rounded-[30px] text-center border border-teal-100">
-                    <p className="text-slate-400 text-[10px] font-bold uppercase mb-1">Your Wallet</p>
-                    <p className="text-2xl font-black text-teal-600 italic tracking-tighter">{userData.walletBalance} Coins</p>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                    <div className="space-y-4">
+                       <h3 className="text-center text-sm font-black uppercase text-purple-400 italic">⚡ Instant Rewards</h3>
+                       <AdReward userId={userData.uid} />
+                    </div>
+                    <div className="space-y-4">
+                       <h3 className="text-center text-sm font-black uppercase text-blue-400 italic">💎 TheoremReach</h3>
+                       <a href={`https://www.theoremreach.com/respondent_entry/direct?api_key=d7c4aff2362e855e36808605c173&user_id=${userData.uid}`} target="_blank" rel="noopener noreferrer" className="glass-card p-10 flex flex-col items-center justify-center text-center hover:scale-[1.02] transition-all no-underline min-h-80">
+                         <div className="text-5xl mb-6">💸</div>
+                         <h3 className="text-2xl font-black text-white uppercase italic mb-4">Premium Tasks</h3>
+                         <div className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase shadow-lg">Open Portal 🚀</div>
+                       </a>
+                    </div>
                   </div>
+                )}
+              </motion.div>
+            )}
 
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-[9px] font-black text-slate-400 uppercase ml-2">Coins Amount</label>
-                      <input 
-                        type="number" 
-                        placeholder="e.g. 5000" 
-                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-black text-xl text-[#2D1B69] border border-slate-100" 
-                        onChange={(e)=>setWithdrawData({...withdrawData, amount: e.target.value})} 
-                        required 
-                      />
-                      {withdrawData.amount && (
-                        <div className="flex justify-between mt-2 px-2">
-                          <p className="text-[10px] font-bold text-emerald-500 italic">PKR: Rs. {Number(withdrawData.amount) / 10}</p>
-                          <p className="text-[10px] font-bold text-orange-500 italic">After Tax: Rs. {((Number(withdrawData.amount) / 10) * 0.95).toFixed(2)}</p>
+            {activeTab === 'network' && (
+              <motion.div key="net" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-10 rounded-[40px]">
+                <h3 className="text-xl font-black text-white uppercase italic text-center mb-8">My Active Referrals</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                   {myTeam.map((m, i) => (
+                     <div key={i} className="bg-white/5 p-5 rounded-2xl border border-white/5 flex items-center gap-4">
+                        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-lg">👤</div>
+                        <div>
+                          <p className="font-black text-white uppercase text-xs">{m.name}</p>
+                          <p className="text-[9px] text-purple-400 font-bold uppercase">{m.plan} Plan</p>
                         </div>
+                     </div>
+                   ))}
+                   {myTeam.length === 0 && <p className="col-span-full py-20 text-center text-slate-500 uppercase italic text-[11px]">No active members in your registry</p>}
+                </div>
+              </motion.div>
+            )}
+
+            {/* --- ADMIN PANEL TAB --- */}
+            {activeTab === 'admin' && (
+              <motion.div key="adm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+                <h3 className="text-xl font-black uppercase italic mb-8 border-b border-white/10 pb-4">Activation Requests</h3>
+                <div className="grid grid-cols-1 gap-4">
+                  {pendingUsers.map((p) => (
+                    <div key={p.id} className="glass-card p-6 flex flex-col md:flex-row justify-between items-center gap-6">
+                      <div className="text-left flex-1">
+                        <p className="text-sm font-black uppercase text-white">{p.name} <span className="text-[9px] text-slate-500 lowercase">({p.email})</span></p>
+                        <p className="text-[10px] text-purple-400 font-bold uppercase mt-1">{p.plan} Activation Request - ${p.planPrice}</p>
+                        <div className="bg-black/40 p-3 rounded-xl mt-3 border border-white/5 space-y-1">
+                           <p className="text-[10px] text-slate-400 font-mono italic">TID: <span className="text-white font-bold">{p.tid}</span></p>
+                           <p className="text-[10px] text-slate-400 font-mono italic">Sender: <span className="text-white font-bold">{p.senderAccount}</span></p>
+                           <p className="text-[10px] text-slate-400 font-mono italic">Method: <span className="text-emerald-500 font-bold uppercase">{p.paymentMethod || 'bank'}</span></p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 w-full md:w-auto">
+                        <button onClick={() => approveUser(p.id, p.plan)} className="flex-1 md:flex-none bg-green-600 hover:bg-green-500 px-8 py-3 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-green-600/20">Approve ✅</button>
+                        <button onClick={() => removeRequest(p.id)} className="flex-1 md:flex-none bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase transition-all">Reject ❌</button>
+                      </div>
+                    </div>
+                  ))}
+                  {pendingUsers.length === 0 && <div className="text-center py-20"><p className="text-slate-600 font-bold uppercase text-xs italic">Clear! No pending activations found.</p></div>}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* --- ACTIVATION MODAL --- */}
+        <AnimatePresence>
+          {activeModal === 'upgrade' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+              <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#0a0a0a] border border-white/10 w-full max-w-md rounded-[50px] p-8 md:p-10 shadow-2xl overflow-y-auto max-h-[95vh]">
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-2xl font-black uppercase italic text-white tracking-tighter">Plan Portal</h2>
+                  <button onClick={() => setActiveModal(null)} className="text-slate-500 text-4xl hover:text-white">&times;</button>
+                </div>
+
+                {userData.status === 'pending_approval' ? (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-6">⏳</div>
+                    <h3 className="text-xl font-black uppercase italic text-orange-500 mb-4 tracking-tighter">Proof Received!</h3>
+                    <p className="text-slate-400 text-xs font-bold leading-relaxed px-6">Verification takes 1-12 hours. Please do not submit multiple requests.</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[10px] font-black text-purple-400 uppercase mb-4 italic">Step 1: Choose Dollar Plan</p>
+                    <div className="grid grid-cols-2 gap-3 mb-8">
+                      {plans.map(p => (
+                        <div key={p.name} onClick={() => setSelectedPlan(p)} className={`p-4 border-2 rounded-3xl cursor-pointer transition-all ${selectedPlan?.name === p.name ? 'border-purple-500 bg-purple-500/10' : 'border-white/5 bg-white/5'}`}>
+                          <p className="text-[10px] font-black uppercase text-white">{p.name}</p>
+                          <p className="font-black text-lg text-purple-400">${p.price}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2 mb-6">
+                      <button onClick={() => setPaymentMethod('bank')} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${paymentMethod === 'bank' ? 'bg-purple-600 shadow-lg' : 'bg-white/5 text-slate-500'}`}>Bank</button>
+                      <button onClick={() => setPaymentMethod('crypto')} className={`flex-1 py-3 rounded-2xl font-black text-[10px] uppercase ${paymentMethod === 'crypto' ? 'bg-purple-600 shadow-lg' : 'bg-white/5 text-slate-500'}`}>Crypto</button>
+                    </div>
+
+                    <div className="bg-white/5 p-6 rounded-[35px] border border-white/5 mb-8 text-center">
+                      {paymentMethod === 'bank' ? (
+                        <>
+                          <p className="text-[9px] font-black text-purple-300 uppercase mb-1">Meezan Account (Usama)</p>
+                          <p className="text-xl font-black tracking-widest font-mono text-white">00300109721101</p>
+                          <p className="text-[8px] text-slate-500 mt-2 font-bold uppercase italic">Pay PKR equivalent to Plan Price</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[9px] font-black text-emerald-400 uppercase mb-3">USDT (TRC20) Wallet</p>
+                          <div className="bg-black/60 p-4 rounded-2xl border border-emerald-500/20 mb-4">
+                             <p className="text-[10px] font-black text-white break-all font-mono leading-tight tracking-tight">TFU4jL1AukpZcKpHzFYwGwVh8EcFVhJBUd</p>
+                          </div>
+                          <button onClick={() => {navigator.clipboard.writeText("TFU4jL1AukpZcKpHzFYwGwVh8EcFVhJBUd"); alert("Wallet Copied!")}} className="text-[9px] font-black text-emerald-400 uppercase hover:underline">Copy Address</button>
+                        </>
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 mt-1">
-                        {['EasyPaisa', 'JazzCash', 'Bank', 'Nayapay'].map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => setWithdrawData({ ...withdrawData, method: m })}
-                            className={`p-3 rounded-xl border text-[10px] font-black uppercase transition-all ${withdrawData.method === m ? 'bg-[#2D1B69] text-white border-[#2D1B69]' : 'bg-white text-slate-400 border-slate-100'}`}
-                          >
-                            {m}
-                          </button>
-                        ))}
+                    <div className="space-y-4">
+                      <input type="text" placeholder="Sender Name / Account" className="w-full p-5 bg-white/5 rounded-2xl outline-none text-[11px] font-bold border border-white/5 text-white" onChange={(e)=>setSenderAccount(e.target.value)} />
+                      <input type="text" placeholder="Transaction ID (TID) / Hash" className="w-full p-5 bg-white/5 rounded-2xl outline-none text-[11px] font-black text-purple-400 border border-white/5" onChange={(e)=>setTid(e.target.value)} />
+                      <button onClick={handleActivationRequest} className="w-full bg-purple-600 text-white p-6 rounded-3xl font-black uppercase italic text-xs shadow-2xl mt-4 active:scale-95 transition-all">Submit Activation 🚀</button>
                     </div>
+                  </>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                    <input type="text" placeholder="Account Title" className="w-full p-5 bg-slate-50 rounded-2xl outline-none text-[11px] font-bold border border-slate-100" onChange={(e)=>setWithdrawData({...withdrawData, accTitle: e.target.value})} required />
-                    <input type="text" placeholder="Account Number" className="w-full p-5 bg-slate-50 rounded-2xl outline-none text-[11px] font-bold border border-slate-100" onChange={(e)=>setWithdrawData({...withdrawData, accNumber: e.target.value})} required />
-                  </div>
-                  <button type="submit" className="w-full bg-[#2D1B69] text-white p-6 rounded-3xl font-black uppercase italic text-xs shadow-2xl transition-all mt-2">Process Withdrawal 💰</button>
-               </form>
-            )}
-            <button onClick={() => setActiveModal(null)} className="w-full mt-6 text-slate-300 font-bold text-[10px] uppercase text-center">Back to Console</button>
-          </div>
-        </div>
-      )}
+        {/* --- WITHDRAW MODAL --- */}
+        <AnimatePresence>
+          {activeModal === 'withdraw' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+              <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-[#0a0a0a] border border-white/10 w-full max-w-md rounded-[50px] p-8 md:p-10 shadow-2xl overflow-y-auto max-h-[90vh]">
+                 <div className="flex justify-between items-center mb-10">
+                    <h2 className="text-2xl font-black uppercase italic text-white tracking-tighter">Payout</h2>
+                    <button onClick={() => setActiveModal(null)} className="text-slate-500 text-4xl hover:text-white">&times;</button>
+                 </div>
+                 <form onSubmit={handleWithdraw} className="space-y-6">
+                    <div className="bg-red-500/10 p-6 rounded-[35px] text-center border border-red-500/20 text-red-500">
+                      <p className="text-[10px] font-black uppercase mb-1 italic">Withdraw Limit</p>
+                      <p className="text-xl font-black italic">Min: 5,000 Coins</p>
+                    </div>
+                    <div className="bg-purple-500/10 p-6 rounded-[35px] text-center border border-purple-500/20 text-purple-400">
+                      <p className="text-[10px] font-bold uppercase mb-1">Total Available</p>
+                      <p className="text-2xl font-black italic tracking-tighter">{userData.walletBalance} Coins</p>
+                    </div>
+                    <div className="space-y-4">
+                      <input type="number" placeholder="Enter Coins Amount" className="w-full p-5 bg-white/5 rounded-2xl outline-none font-black text-xl text-white border border-white/5" onChange={(e)=>setWithdrawData({...withdrawData, amount: e.target.value})} required />
+                      <div className="grid grid-cols-2 gap-2">
+                          {['EasyPaisa', 'JazzCash', 'Bank', 'Nayapay'].map((m) => (
+                            <button key={m} type="button" onClick={() => setWithdrawData({ ...withdrawData, method: m })} className={`p-4 rounded-2xl border text-[10px] font-black uppercase transition-all ${withdrawData.method === m ? 'bg-purple-600 text-white border-purple-600 shadow-lg' : 'bg-white/5 text-slate-500 border-white/5'}`}>{m}</button>
+                          ))}
+                      </div>
+                      <input type="text" placeholder="Account Title" className="w-full p-5 bg-white/5 rounded-2xl outline-none text-[11px] font-bold border border-white/5 text-white" onChange={(e)=>setWithdrawData({...withdrawData, accTitle: e.target.value})} required />
+                      <input type="text" placeholder="Account Number" className="w-full p-5 bg-white/5 rounded-2xl outline-none text-[11px] font-bold border border-white/5 text-white" onChange={(e)=>setWithdrawData({...withdrawData, accNumber: e.target.value})} required />
+                    </div>
+                    <button type="submit" className="w-full bg-purple-600 text-white p-6 rounded-3xl font-black uppercase italic text-xs shadow-2xl transition-all">Process Payment 💰</button>
+                 </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <LiveTicker />
+      </main>
     </div>
   );
 };
 
 const NavItem = ({ icon, label, active = false, onClick }) => (
-  <div onClick={onClick} className={`flex items-center gap-4 px-6 py-4 rounded-2xl cursor-pointer transition-all duration-300 ${active ? 'bg-teal-50 text-[#2D1B69] font-black border-l-4 border-teal-400 shadow-sm' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600 font-bold'}`}>
+  <motion.div whileHover={{ x: 5 }} onClick={onClick} className={`flex items-center gap-4 px-6 py-5 rounded-[25px] cursor-pointer transition-all duration-300 ${active ? 'bg-purple-600/10 text-purple-400 border-l-4 border-purple-500 font-black shadow-inner' : 'text-slate-500 hover:text-slate-300 font-bold'}`}>
     <span className="text-2xl">{icon}</span>
     <span className="text-[10px] uppercase tracking-widest">{label}</span>
-  </div>
+  </motion.div>
 );
 
 export default Dashboard;

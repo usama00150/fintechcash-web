@@ -13,7 +13,7 @@ const Signup = () => {
   const recaptchaRef = useRef(null);
   const navigate = useNavigate();
 
-  // Referral Link Logic (Purani wali)
+  // Referral Link Logic
   useEffect(() => {
     const queryParams = new URLSearchParams(window.location.search);
     const ref = queryParams.get('ref');
@@ -24,7 +24,7 @@ const Signup = () => {
     e.preventDefault();
 
     if (!captchaToken) {
-      return alert("Please verify that you are not a robot.");
+      return alert("Please verify reCAPTCHA.");
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -36,7 +36,6 @@ const Signup = () => {
       const res = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
       const user = res.user;
 
-      // Wahi exact fields jo pehlay thi
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         name: formData.name,
@@ -53,7 +52,7 @@ const Signup = () => {
         createdAt: serverTimestamp()
       });
 
-      alert("Signup Successful! Welcome to FintechCash.");
+      // Direct redirect for smooth experience
       navigate('/dashboard');
     } catch (err) {
       alert("Error: " + err.message);
@@ -63,108 +62,111 @@ const Signup = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 min-h-screen font-sans bg-white">
+    // h-screen aur overflow-hidden screen ko lock rakhega
+    <div className="grid grid-cols-1 md:grid-cols-2 h-screen overflow-hidden font-sans bg-white">
       
-      {/* 👈 Left Side: Purple Form Section */}
-      <div className="bg-[#2D1B69] p-8 md:p-16 flex flex-col justify-center text-white overflow-y-auto">
-        <div className="mb-6 flex items-center gap-2">
-          <div className="w-8 h-8 bg-teal-400 rounded-lg flex items-center justify-center">
-            <span className="text-[#2D1B69] font-bold">F</span>
-          </div>
-          <span className="text-xl font-bold tracking-tight">FINTECH CASH</span>
+      {/* 👈 Left Side: Form Section */}
+      <div className="bg-[#2D1B69] p-4 md:p-8 lg:p-12 flex flex-col justify-center text-white relative">
+        <div className="max-w-xl mx-auto w-full">
+            <div className="mb-3 flex items-center gap-2 text-left">
+                <div className="w-7 h-7 bg-teal-400 rounded-lg flex items-center justify-center">
+                    <span className="text-[#2D1B69] font-bold text-sm">F</span>
+                </div>
+                <span className="text-base font-bold tracking-tight uppercase italic text-teal-400">Fintech Cash</span>
+            </div>
+
+            <h1 className="text-2xl font-black mb-0.5 text-left uppercase italic tracking-tighter">Create Account</h1>
+            
+            {/* Referral Badge - Compact */}
+            <div className="bg-[#3D2B7A] border border-purple-400/30 p-1 px-3 rounded-lg inline-block mb-4">
+                <p className="text-[9px] text-purple-300 uppercase font-bold tracking-widest leading-none">Invited By: <span className="text-teal-300 ml-1 font-black">{referredBy}</span></p>
+            </div>
+
+            <form onSubmit={handleSignup} className="space-y-2.5">
+                {/* Full Name */}
+                <div>
+                    <label className="block text-[10px] font-bold mb-0.5 uppercase text-purple-200 tracking-widest">Full Name</label>
+                    <input type="text" placeholder="Full Name" className="w-full p-2.5 rounded-xl border border-purple-400/30 bg-[#3D2B7A] text-white placeholder-purple-400 focus:outline-none focus:ring-1 focus:ring-teal-400 text-xs" 
+                    onChange={(e)=>setFormData({...formData, name: e.target.value})} required />
+                </div>
+
+                {/* Email & Phone Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-[10px] font-bold mb-0.5 uppercase text-purple-200 tracking-widest">Email</label>
+                        <input type="email" placeholder="user@gmail.com" className="w-full p-2.5 rounded-xl border border-purple-400/30 bg-[#3D2B7A] text-white text-xs" 
+                            onChange={(e)=>setFormData({...formData, email: e.target.value})} required />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-bold mb-0.5 uppercase text-purple-200 tracking-widest">Phone</label>
+                        <input type="text" placeholder="03XXXXXXXXX" className="w-full p-2.5 rounded-xl border border-purple-400/30 bg-[#3D2B7A] text-white text-xs" 
+                            onChange={(e)=>setFormData({...formData, phone: e.target.value})} required />
+                    </div>
+                </div>
+
+                {/* Passwords Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-[10px] font-bold mb-0.5 uppercase text-purple-200 tracking-widest">Password</label>
+                        <input type="password" placeholder="••••••••" className="w-full p-2.5 rounded-xl border border-purple-400/30 bg-[#3D2B7A] text-white text-xs" 
+                            onChange={(e)=>setFormData({...formData, password: e.target.value})} required />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-bold mb-0.5 uppercase text-purple-200 tracking-widest">Confirm</label>
+                        <input type="password" placeholder="••••••••" className="w-full p-2.5 rounded-xl border border-purple-400/30 bg-[#3D2B7A] text-white text-xs" 
+                            onChange={(e)=>setFormData({...formData, confirmPassword: e.target.value})} required />
+                    </div>
+                </div>
+
+                {/* Google reCAPTCHA - Scaled down to 75% to save vertical space */}
+                <div className="py-1 transform scale-[0.75] origin-left -ml-2 -mb-2">
+                    <ReCAPTCHA
+                        ref={recaptchaRef}
+                        sitekey="6LdcBrwsAAAAAINWKyi4KAQOZmvCfozpRC6ivFPv"
+                        onChange={(token) => setCaptchaToken(token)}
+                        theme="dark"
+                    />
+                </div>
+
+                {/* Privacy & Terms Links */}
+                <p className="text-[9px] text-purple-200 leading-tight uppercase font-bold tracking-tight">
+                    By joining, you agree to our 
+                    <span className="underline text-teal-300 mx-1 cursor-pointer hover:text-white" onClick={() => navigate('/privacy')}>Privacy</span> and 
+                    <span className="underline text-teal-300 mx-1 cursor-pointer hover:text-white" onClick={() => navigate('/terms')}>Terms</span>.
+                </p>
+
+                {/* Signup Button */}
+                <button type="submit" disabled={loading} className="w-full bg-teal-400 hover:bg-teal-500 text-[#2D1B69] font-black py-3 rounded-xl shadow-lg transition-all active:scale-95 text-[11px] uppercase tracking-widest">
+                    {loading ? "Registering..." : "Create Account"}
+                </button>
+            </form>
+
+            {/* LOGIN LINK */}
+            <p className="mt-4 text-center text-[10px] text-purple-200 uppercase font-bold tracking-widest">
+                Existing user? <span className="text-teal-300 font-black hover:underline cursor-pointer ml-1" onClick={() => navigate('/login')}>Login here</span>
+            </p>
         </div>
-
-        <h1 className="text-4xl font-bold mb-2 text-left">Create Account</h1>
-        
-        {/* Referral Badge */}
-        <div className="bg-[#3D2B7A] border border-purple-400 p-2 px-4 rounded-xl inline-block mb-6 w-fit">
-          <p className="text-[10px] text-purple-300 uppercase tracking-widest">Invited By</p>
-          <p className="text-sm font-bold text-teal-300">{referredBy}</p>
-        </div>
-
-        <form onSubmit={handleSignup} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-purple-100">Full Name</label>
-            <input type="text" placeholder="Enter your name" className="w-full p-3 rounded-xl border border-purple-400 bg-[#3D2B7A] text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-teal-400" 
-              onChange={(e)=>setFormData({...formData, name: e.target.value})} required />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 text-purple-100">Email Address</label>
-              <input type="email" placeholder="Enter your email @gmail.com" className="w-full p-3 rounded-xl border border-purple-400 bg-[#3D2B7A] text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-teal-400" 
-                onChange={(e)=>setFormData({...formData, email: e.target.value})} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1 text-purple-100">Phone Number</label>
-              <input type="text" placeholder="03XXXXXXXXX" className="w-full p-3 rounded-xl border border-purple-400 bg-[#3D2B7A] text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-teal-400" 
-                onChange={(e)=>setFormData({...formData, phone: e.target.value})} required />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 text-purple-100">Password</label>
-              <input type="password" placeholder="Enter your password" className="w-full p-3 rounded-xl border border-purple-400 bg-[#3D2B7A] text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-teal-400" 
-                onChange={(e)=>setFormData({...formData, password: e.target.value})} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1 text-purple-100">Confirm Password</label>
-              <input type="password" placeholder="Confirm your password" className="w-full p-3 rounded-xl border border-purple-400 bg-[#3D2B7A] text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-teal-400" 
-                onChange={(e)=>setFormData({...formData, confirmPassword: e.target.value})} required />
-            </div>
-          </div>
-
-          {/* Google reCAPTCHA (Using your original key) */}
-          <div className="py-2 flex justify-center md:justify-start">
-            <ReCAPTCHA
-              ref={recaptchaRef}
-              sitekey="6LdcBrwsAAAAAINWKyi4KAQOZmvCfozpRC6ivFPv"
-              onChange={(token) => setCaptchaToken(token)}
-              theme="dark"
-            />
-          </div>
-
-          <p className="text-[12px] text-purple-200">
-            By continuing, you agree to our 
-            <span className="underline text-teal-300 mx-1 cursor-pointer" onClick={() => navigate('/privacy')}>Privacy Policy</span> and 
-            <span className="underline text-teal-300 mx-1 cursor-pointer" onClick={() => navigate('/terms')}>Terms of Service</span>.
-          </p>
-
-          <button type="submit" disabled={loading} className="w-full bg-teal-400 hover:bg-teal-500 text-[#2D1B69] font-black py-4 rounded-xl shadow-lg transition-all active:scale-95">
-            {loading ? "Processing..." : "Create Account & Start"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-purple-200">
-          Already have an account? <span className="text-teal-300 font-bold hover:underline cursor-pointer" onClick={() => navigate('/login')}>Login here</span>
-        </p>
       </div>
 
-      {/* 👉 Right Side: Light Branding Section */}
-      <div className="hidden md:flex bg-slate-50 relative flex-col justify-center items-center p-12 text-center">
-        <h2 className="text-3xl font-bold text-slate-800 mb-4">Grow Your Earnings</h2>
-        <p className="text-slate-500 max-w-sm mb-12">Connect with global surveys and maximize your daily income with ease.</p>
-
-        <div className="bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 w-full max-w-sm">
-           <div className="flex items-center gap-4 mb-6 text-left">
-              <div className="w-12 h-12 bg-linear-to-br from-teal-400 to-blue-500 rounded-2xl shadow-lg shadow-teal-100"></div>
-              <div>
-                <p className="font-bold text-slate-800">Start Earning Today</p>
-                <p className="text-xs text-slate-400">Join 100k+ active users</p>
-              </div>
-           </div>
-           
-           <div className="space-y-4">
-              <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                <span className="text-slate-500 text-sm font-medium">Total Paid Out</span>
-                <span className="font-bold text-teal-600">$12.5M+</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                <span className="text-slate-500 text-sm font-medium">Exchange Rate</span>
-                <span className="font-bold text-slate-700 text-sm">10 Coins = 1 PKR</span>
-              </div>
-           </div>
+      {/* 👉 Right Side: Static Branding */}
+      <div className="hidden md:flex bg-slate-50 justify-center items-center p-8 relative overflow-hidden h-full">
+        <div className="absolute w-64 h-64 bg-teal-100 rounded-full blur-3xl opacity-30 -bottom-10 -right-10"></div>
+        <div className="max-w-xs z-10 text-center">
+          <h2 className="text-2xl font-black text-slate-800 mb-1 uppercase italic tracking-tighter">Scale Your Earnings</h2>
+          <p className="text-slate-400 text-[10px] mb-8 font-bold uppercase tracking-widest">Join 100k+ users in Pakistan</p>
+          
+          <div className="bg-white p-6 rounded-4xl shadow-xl border border-slate-100">
+             <div className="space-y-4 text-left">
+                <div className="flex justify-between items-center border-b border-slate-50 pb-3">
+                  <span className="text-slate-500 text-[9px] font-bold uppercase">Payout Limit</span>
+                  <span className="font-black text-teal-600 text-xs">Rs. 500+</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 text-[9px] font-bold uppercase">Network Fee</span>
+                  <span className="font-black text-slate-800 text-xs">0% Direct</span>
+                </div>
+             </div>
+          </div>
         </div>
       </div>
     </div>
