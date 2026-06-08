@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase'; 
 import { doc, updateDoc, increment } from "firebase/firestore";
 
-const AdReward = ({ userId }) => {
+const AdReward = ({ userId, onAdWatched }) => {
   const [timer, setTimer] = useState(30);
   const [status, setStatus] = useState('idle'); // idle, counting, claim, cooldown
   const timerRef = useRef(null);
@@ -22,12 +22,12 @@ const AdReward = ({ userId }) => {
         setTimer((prev) => {
           if (prev <= 1) {
             clearInterval(timerRef.current);
-            setStatus('claim'); // Timer end status change
+            setStatus('claim'); 
             return 0;
           }
           return prev - 1;
         });
-      }, 1000);
+      } , 1000);
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -41,7 +41,11 @@ const AdReward = ({ userId }) => {
         walletBalance: increment(10)
       });
       
-      alert("Mubarak ho! 10 Coins add ho gaye.");
+      // Complete background trigger sync
+      if (onAdWatched) {
+        onAdWatched();
+      }
+      
       setStatus('cooldown');
       
       // 2 Minute Cooldown
@@ -80,7 +84,7 @@ const AdReward = ({ userId }) => {
         </div>
       )}
 
-      {/* --- CLAIM STATE (Is status par component ruk jaye ga) --- */}
+      {/* --- CLAIM STATE --- */}
       {status === 'claim' && (
         <div className="space-y-4">
           <button 

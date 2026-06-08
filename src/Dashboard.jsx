@@ -40,7 +40,25 @@ const Dashboard = () => {
         getDoc(doc(db, "users", user.uid)).then((snap) => {
           if (snap.exists()) {
             const data = snap.data();
-            setUserData({ ...data, uid: user.uid }); 
+            
+            // --- 24 Hour Reset Logic for Ad Tracking ---
+            const todayStr = new Date().toDateString();
+            let currentAdsWatched = data.adsWatchedToday || 0;
+
+            if (data.lastAdWatchedDate !== todayStr) {
+              currentAdsWatched = 0;
+              updateDoc(doc(db, "users", user.uid), {
+                adsWatchedToday: 0,
+                lastAdWatchedDate: todayStr
+              });
+            }
+
+            setUserData({ 
+              ...data, 
+              uid: user.uid,
+              adsWatchedToday: currentAdsWatched,
+              lastAdWatchedDate: todayStr 
+            }); 
             
             // Fetch Team
             const qTeam = query(collection(db, "users"), where("referredBy", "==", user.uid), where("status", "==", "active"));
@@ -61,23 +79,6 @@ const Dashboard = () => {
         navigate('/login');
       }
     });
-
-    // --- ⚠️ MASS RESET SCRIPT (Disabled for Safety) ⚠️ ---
-    const massReset = async () => {
-        const querySnapshot = await getDocs(collection(db, "users"));
-        querySnapshot.forEach(async (uDoc) => {
-            await updateDoc(doc(db, "users", uDoc.id), {
-                status: "inactive",
-                plan: "None",
-                planPrice: 0,
-                walletBalance: 0 
-            });
-        });
-        alert("RESET DONE: All users are now inactive with 0 balance!");
-    };
-
-    // ✅ MASRESET LINE IS NOW COMMENTED:
-    // massReset(); 
 
     return () => unsub();
   }, [navigate, activeTab]);
@@ -141,6 +142,26 @@ const Dashboard = () => {
     });
   };
 
+  // --- Ad Limit Handler ---
+  const getPlanAdLimit = (planName) => {
+    if (planName === 'Professional') return 10; 
+    if (planName === 'Elite') return 15;        
+    return 0;
+  };
+
+  const handleAdWatchedIncrement = () => {
+    const todayStr = new Date().toDateString();
+    const nextCount = userData.adsWatchedToday + 1;
+
+    updateDoc(doc(db, "users", userData.uid), {
+      adsWatchedToday: increment(1),
+      lastAdWatchedDate: todayStr
+    }).then(() => {
+      setUserData(prev => ({ ...prev, adsWatchedToday: nextCount }));
+      // Alert completely removed from here as requested.
+    });
+  };
+
   if (!userData) return (
     <div className="h-screen flex items-center justify-center bg-[#050505]">
       <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="h-12 w-12 border-t-2 border-b-2 border-purple-500 rounded-full"></motion.div>
@@ -148,6 +169,8 @@ const Dashboard = () => {
   );
 
   const hasPremiumAccess = ['Professional', 'Elite'].includes(userData.plan);
+  const adLimit = getPlanAdLimit(userData.plan);
+  const isAdLimitReached = userData.adsWatchedToday >= adLimit;
 
   return (
     <div className="flex h-screen bg-[#050505] text-white font-sans overflow-hidden relative">
@@ -240,8 +263,20 @@ const Dashboard = () => {
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                     <div className="space-y-4">
-                       <h3 className="text-center text-sm font-black uppercase text-purple-400 italic">⚡ Instant Rewards</h3>
-                       <AdReward userId={userData.uid} />
+                       <h3 className="text-center text-sm font-black uppercase text-purple-400 italic">
+                         ⚡ Instant Rewards ({userData.adsWatchedToday}/{adLimit} Ads)
+                       </h3>
+                       
+                       {isAdLimitReached ? (
+                         <div className="glass-card p-10 text-center min-h-80 flex flex-col items-center justify-center border border-red-500/20 bg-red-500/5">
+                           <div className="text-4xl mb-4">🚫</div>
+                           <p className="text-red-400 font-black uppercase text-xs tracking-wider">Daily Limit Reached!</p>
+                           <p className="text-slate-500 text-[10px] mt-2 uppercase font-bold">Come back tomorrow after 24 hours to watch more ads.</p>
+                         </div>
+                       ) : (
+                         /* Pass logic down as a prop cleanly */
+                         <AdReward userId={userData.uid} onAdWatched={handleAdWatchedIncrement} />
+                       )}
                     </div>
                     <div className="space-y-4">
                        <h3 className="text-center text-sm font-black uppercase text-blue-400 italic">💎 TheoremReach</h3>
